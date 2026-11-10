@@ -1,0 +1,39 @@
+services:
+  db:
+    image: postgres:17
+    container_name: api_db
+    restart: unless-stopped
+    environment:                # filled in from .env, so one .env works for everything
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${PASSWORD}
+      POSTGRES_DB: ${DATABASE}
+    volumes:
+      - pgdata:/var/lib/postgresql/data   # data survives restarts and rebuilds
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"         # container logs grow forever by default
+        max-file: "3"
+    # No "ports:" - the database is only reachable inside Docker's network
+
+  api:
+    build: .
+    container_name: api_app
+    restart: unless-stopped
+    env_file: .env              # DATABASE, DB_USER, PASSWORD, DB_PORT
+    environment:
+      DB_HOST: db               # overrides localhost from .env: "db" = the service name above
+    depends_on:
+      db:
+        condition: service_healthy   # wait until Postgres actually accepts connections
+    ports:
+      - "127.0.0.1:8000:8000"   # only localhost, so nginx is the only way in
+    logging: *logging
+
+volumes:
+  pgdata:
